@@ -5,7 +5,8 @@ import OrreryCore
 public struct MagiCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "orrery-magi",
-        abstract: L10n.Magi.abstract
+        abstract: L10n.Magi.abstract,
+        version: OrreryMagiVersion.current
     )
 
     @Flag(help: ArgumentHelp(L10n.ToolFlag.claude))
@@ -38,12 +39,35 @@ public struct MagiCommand: ParsableCommand {
     @Flag(name: .long, help: ArgumentHelp(L10n.Magi.specHelp))
     public var spec: Bool = false
 
+    @Flag(name: .long, help: "Print capabilities JSON and exit")
+    public var capabilities: Bool = false
+
+    @Flag(name: .long, help: "Print MCP tool schema JSON and exit")
+    public var printMcpSchema: Bool = false
+
     @Argument(help: ArgumentHelp(L10n.Magi.topicHelp))
-    public var topic: String
+    public var topic: String?
 
     public init() {}
 
+    public func validate() throws {
+        if topic == nil && !capabilities && !printMcpSchema {
+            throw ValidationError("Missing required argument: topic")
+        }
+    }
+
     public func run() throws {
+        if capabilities {
+            print(MagiCapabilities.json())
+            return
+        }
+
+        if printMcpSchema {
+            print(jsonString(MagiMCPTools.schema))
+            return
+        }
+
+        let topicStr = topic!
         let store = EnvironmentStore.default
         let envName = environment ?? ProcessInfo.processInfo.environment["ORRERY_ACTIVE_ENV"]
 
@@ -61,7 +85,7 @@ public struct MagiCommand: ParsableCommand {
         }
 
         // Split topic into subtopics by semicolons
-        let subtopics = topic.components(separatedBy: ";")
+        let subtopics = topicStr.components(separatedBy: ";")
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
 
@@ -98,7 +122,7 @@ public struct MagiCommand: ParsableCommand {
         }
 
         let magiRun = try MagiOrchestrator.run(
-            topic: topic,
+            topic: topicStr,
             subtopics: subtopics,
             tools: tools,
             maxRounds: rounds,
@@ -141,5 +165,15 @@ public struct MagiCommand: ParsableCommand {
         } catch {
             return false
         }
+    }
+
+    private func jsonString(_ object: Any) -> String {
+        guard let data = try? JSONSerialization.data(
+            withJSONObject: object,
+            options: [.prettyPrinted, .sortedKeys]
+        ), let str = String(data: data, encoding: .utf8) else {
+            return "{}"
+        }
+        return str
     }
 }
