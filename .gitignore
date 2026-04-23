@@ -1,0 +1,8 @@
+.build/
+.build-local/
+.swift-cache/
+.swiftpm/
+.claude/
+.gemini/
+.mcp.json
+*.resolved
