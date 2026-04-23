@@ -1,6 +1,15 @@
 // swift-tools-version: 6.0
 import PackageDescription
 
+// NOTE on target name `OrreryMagiStandalone`:
+// The Orrery package (../Orrery) currently also declares a target named
+// `OrreryMagi` during the Phase 2 split gating period. SPM forbids two
+// packages in the same graph from having targets with identical names,
+// so we use `OrreryMagiStandalone` as the internal target name while
+// keeping the external library product name as `OrreryMagi`. After
+// Step 4 cleanup removes Orrery's target, the internal rename can be
+// reverted (the product name — what consumers see — never changes).
+
 let package = Package(
     name: "orrery-magi",
     platforms: [.macOS(.v13)],
