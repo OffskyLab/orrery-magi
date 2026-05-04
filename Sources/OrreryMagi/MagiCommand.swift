@@ -4,7 +4,7 @@ import OrreryCore
 
 public struct MagiCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
-        commandName: "orrery-magi",
+        commandName: "magi",
         abstract: L10n.Magi.abstract,
         version: OrreryMagiVersion.current
     )
@@ -45,13 +45,23 @@ public struct MagiCommand: ParsableCommand {
     @Flag(name: .long, help: "Print MCP tool schema JSON and exit")
     public var printMcpSchema: Bool = false
 
+    @Flag(name: .customLong("print-mcp-schemas"), help: "Print all MCP tool schemas as JSON array")
+    public var printMcpSchemas: Bool = false
+
+    @Option(name: .customLong("print-mcp-schema-for"), help: "Print one MCP tool schema by name")
+    public var printMcpSchemaFor: String?
+
     @Argument(help: ArgumentHelp(L10n.Magi.topicHelp))
     public var topic: String?
 
     public init() {}
 
     public func validate() throws {
-        if topic == nil && !capabilities && !printMcpSchema {
+        if topic == nil
+            && !capabilities
+            && !printMcpSchema
+            && !printMcpSchemas
+            && printMcpSchemaFor == nil {
             throw ValidationError("Missing required argument: topic")
         }
     }
@@ -64,6 +74,19 @@ public struct MagiCommand: ParsableCommand {
 
         if printMcpSchema {
             print(jsonString(MagiMCPTools.schema))
+            return
+        }
+
+        if printMcpSchemas {
+            print(jsonString(MagiMCPTools.schemas))
+            return
+        }
+
+        if let name = printMcpSchemaFor {
+            guard let schema = MagiMCPTools.schemas.first(where: { $0["name"] as? String == name }) else {
+                throw ValidationError("unknown tool: \(name)")
+            }
+            print(jsonString(schema))
             return
         }
 

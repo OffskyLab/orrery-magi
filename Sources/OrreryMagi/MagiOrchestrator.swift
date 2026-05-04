@@ -14,8 +14,10 @@ public struct MagiOrchestrator {
         outputPath: String?,
         previousRunId: String? = nil,
         noSummarize: Bool = false,
-        roles: [String: MagiRole]? = nil
+        roles: [String: MagiRole]? = nil,
+        emitOutput: Bool = true
     ) throws -> MagiRun {
+        let log: (String) -> Void = emitOutput ? stderr : { _ in }
         let now = ISO8601DateFormatter().string(from: Date())
         var magiRun = MagiRun(
             runId: UUID().uuidString,
@@ -45,11 +47,11 @@ public struct MagiOrchestrator {
             let previousRun = try JSONDecoder().decode(MagiRun.self, from: data)
             sessionMap = previousRun.sessionMap ?? [:]
             previousRounds = previousRun.rounds
-            stderr(L10n.Magi.resuming(previousRunId))
+            log(L10n.Magi.resuming(previousRunId))
         }
 
         for roundNumber in 1...maxRounds {
-            stderr(L10n.Magi.roundStart(roundNumber, maxRounds))
+            log(L10n.Magi.roundStart(roundNumber, maxRounds))
 
             let allPreviousRounds = previousRounds + magiRun.rounds
 
@@ -76,9 +78,9 @@ public struct MagiOrchestrator {
                         role: role)
 
                     if let role {
-                        stderr(L10n.Magi.roleAssigned(tool.rawValue, role.label))
+                        log(L10n.Magi.roleAssigned(tool.rawValue, role.label))
                     }
-                    stderr(L10n.Magi.toolStart(tool.rawValue))
+                    log(L10n.Magi.toolStart(tool.rawValue))
 
                     // Post-M5a: Magi no longer owns the subprocess plumbing;
                     // `ProcessAgentExecutor` is the single path through
@@ -104,7 +106,7 @@ public struct MagiOrchestrator {
                     }
 
                     if result.timedOut {
-                        stderr(L10n.Magi.timeoutWarning(tool.rawValue, 120))
+                        log(L10n.Magi.timeoutWarning(tool.rawValue, 120))
                     }
 
                     resultQueue.sync { runnerResults.append(result) }
@@ -118,7 +120,7 @@ public struct MagiOrchestrator {
                 let (positions, parseSuccess) = MagiResponseParser.parse(
                     rawOutput: result.rawOutput, subtopics: subtopics)
                 let parseStatus = parseSuccess ? "parsed" : "fallback"
-                stderr(L10n.Magi.toolDone(result.tool.rawValue, parseStatus))
+                log(L10n.Magi.toolDone(result.tool.rawValue, parseStatus))
 
                 responses.append(MagiAgentResponse(
                     tool: result.tool,
@@ -156,7 +158,7 @@ public struct MagiOrchestrator {
         // Generate FinalVerdict
         let verdict: FinalVerdict
         if !noSummarize {
-            stderr(L10n.Magi.summarizing)
+            log(L10n.Magi.summarizing)
             if let summarized = try? generateSummarizedVerdict(
                 run: magiRun, tools: tools, environment: environment, store: store) {
                 verdict = summarized
@@ -172,23 +174,24 @@ public struct MagiOrchestrator {
         try magiRun.save(store: store)
 
         let report = generateReport(run: magiRun)
-        // stdout: only final report + Run ID
-        print(report)
-        print("\nRun ID: \(magiRun.runId)")
+        if emitOutput {
+            print(report)
+            print("\nRun ID: \(magiRun.runId)")
+        }
 
         if let outputPath {
             do {
                 try report.write(toFile: outputPath, atomically: true, encoding: .utf8)
-                stderr(L10n.Magi.runSaved(outputPath))
+                log(L10n.Magi.runSaved(outputPath))
             } catch {
-                stderr("Warning: could not write to \(outputPath): \(error)")
+                log("Warning: could not write to \(outputPath): \(error)")
             }
         }
 
         let savePath = store.homeURL
             .appendingPathComponent("magi")
             .appendingPathComponent("\(magiRun.runId).json").path
-        stderr(L10n.Magi.runSaved(savePath))
+        log(L10n.Magi.runSaved(savePath))
 
         return magiRun
     }

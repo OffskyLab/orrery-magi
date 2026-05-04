@@ -35,8 +35,8 @@ public enum MagiCapabilities {
 
             "mcp_schema": [
                 "available": true,
-                "command": "--print-mcp-schema",
-                "format": "mcp-tools-json"
+                "command": "--print-mcp-schemas",
+                "format": "mcp-tools-json-array"
             ],
 
             "features": [
@@ -44,6 +44,8 @@ public enum MagiCapabilities {
                     "status": "stable",
                     "values": MagiRolePreset.allCases.map { $0.rawValue }
                 ],
+                "multi_tool_schema": ["status": "stable"],
+                "spec_runtime": ["status": "stable"],
                 "spec_output": ["status": "stable"],
                 "custom_roles": ["status": "stable"]
             ],

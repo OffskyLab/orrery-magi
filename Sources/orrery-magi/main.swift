@@ -1,4 +1,3 @@
-import OrreryCore
-import OrreryMagiStandalone
+import OrreryMagi
 
-MagiCommand.main()
+OrreryMagiRoot.main()
