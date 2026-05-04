@@ -1,0 +1,92 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos-arm64:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: swift build -c release
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp .build/release/orrery-magi dist/orrery-magi
+          chmod +x dist/orrery-magi
+          tar -czf orrery-magi-darwin-arm64.tar.gz -C dist .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: orrery-magi-darwin-arm64
+          path: orrery-magi-darwin-arm64.tar.gz
+
+  build-linux-x86_64:
+    runs-on: ubuntu-latest
+    container: swift:6.0-jammy
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: swift build -c release --static-swift-stdlib
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp .build/release/orrery-magi dist/orrery-magi
+          chmod +x dist/orrery-magi
+          tar -czf orrery-magi-linux-x86_64.tar.gz -C dist .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: orrery-magi-linux-x86_64
+          path: orrery-magi-linux-x86_64.tar.gz
+
+  build-linux-arm64:
+    runs-on: ubuntu-24.04-arm
+    container: swift:6.0-jammy
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: swift build -c release --static-swift-stdlib
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp .build/release/orrery-magi dist/orrery-magi
+          chmod +x dist/orrery-magi
+          tar -czf orrery-magi-linux-arm64.tar.gz -C dist .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: orrery-magi-linux-arm64
+          path: orrery-magi-linux-arm64.tar.gz
+
+  release:
+    needs: [build-macos-arm64, build-linux-x86_64, build-linux-arm64]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          assets=(
+            artifacts/orrery-magi-darwin-arm64/orrery-magi-darwin-arm64.tar.gz
+            artifacts/orrery-magi-linux-x86_64/orrery-magi-linux-x86_64.tar.gz
+            artifacts/orrery-magi-linux-arm64/orrery-magi-linux-arm64.tar.gz
+          )
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $tag already exists — uploading assets with --clobber"
+            gh release upload "$tag" --repo "$GITHUB_REPOSITORY" --clobber "${assets[@]}"
+          else
+            gh release create "$tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$tag" \
+              --generate-notes \
+              "${assets[@]}"
+          fi
