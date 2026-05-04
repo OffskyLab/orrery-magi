@@ -6,3 +6,5 @@
 .gemini/
 .mcp.json
 *.resolved
+docs/discussions/
+docs/tasks/
