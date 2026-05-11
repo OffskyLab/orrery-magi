@@ -1,10 +1,10 @@
 // swift-tools-version: 6.0
 import PackageDescription
 
-// TODO: Phase D switches this path dep to a URL dependency.
-// Path dep is for local-only testing while orrery v2.6.0 is unreleased —
-// it points at the sibling ../Orrery checkout where v2.6.0-ready code
-// lives on feature/delegate-session.
+// orrery v2.7.0-ready code lives on the `feature/magi` branch at
+// OffskyLab/Orrery; we pin the exact commit so CI builds are
+// reproducible. v1.1.1 will switch this to `.upToNextMajor(from: "2.7.0")`
+// once orrery v2.7.0 is tagged and released.
 
 let package = Package(
     name: "orrery-magi",
@@ -14,7 +14,10 @@ let package = Package(
         .library(name: "OrreryMagi", targets: ["OrreryMagi"]),
     ],
     dependencies: [
-        .package(path: "../Orrery"),
+        .package(
+            url: "https://github.com/OffskyLab/Orrery",
+            revision: "aa1c5ed228530ee5c6ae7492b44407680b19d845"
+        ),
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
     ],
     targets: [
