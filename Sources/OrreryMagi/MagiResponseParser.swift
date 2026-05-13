@@ -29,12 +29,10 @@ public struct MagiResponseParser {
 
     private static func parseJSONBlock(from text: String) -> [MagiPositionEntry]? {
         // Find the last ```json ... ``` block
-        let pattern = "```json\\s*\\n([\\s\\S]*?)\\n\\s*```"
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
-        let nsString = text as NSString
-        let matches = regex.matches(in: text, range: NSRange(location: 0, length: nsString.length))
-        guard let lastMatch = matches.last else { return nil }
-        let jsonString = nsString.substring(with: lastMatch.range(at: 1))
+        guard let regex = try? Regex("```json\\s*\\n([\\s\\S]*?)\\n\\s*```"),
+              let lastMatch = text.matches(of: regex).last,
+              let jsonSubstring = lastMatch.output[1].substring else { return nil }
+        let jsonString = String(jsonSubstring)
         guard let data = jsonString.data(using: .utf8) else { return nil }
         let wrapper = try? JSONDecoder().decode(PositionsWrapper.self, from: data)
         return wrapper?.positions

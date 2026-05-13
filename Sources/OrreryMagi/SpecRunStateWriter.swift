@@ -1,7 +1,11 @@
 import ArgumentParser
-import Darwin
 import Foundation
 import OrreryCore
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 
 public struct SpecRunStateWriter {
     public static func write(sessionId: String, state: SpecRunState) throws {
@@ -56,7 +60,11 @@ public struct SpecRunStateWriter {
         encoder.outputFormatting = [.sortedKeys, .prettyPrinted]
         let data = try encoder.encode(state)
         let written = data.withUnsafeBytes { buffer -> Int in
-            Darwin.write(fd, buffer.baseAddress, data.count)
+            #if canImport(Darwin)
+            return Darwin.write(fd, buffer.baseAddress, data.count)
+            #elseif canImport(Glibc)
+            return Glibc.write(fd, buffer.baseAddress, data.count)
+            #endif
         }
         guard written == data.count else {
             throw SpecRunStateError.ioError(errno)

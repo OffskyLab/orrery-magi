@@ -258,14 +258,11 @@ public struct SpecAcceptanceParser {
         // Pattern: `<<` + optional `-` + optional matching single/double quote
         // around a delimiter `\w+`. Captures: 1=dash, 2=open-quote, 3=word.
         let pattern = #"<<(-?)(['"]?)(\w+)\2"#
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
-        let range = NSRange(line.startIndex..<line.endIndex, in: line)
-        guard let match = regex.firstMatch(in: line, options: [], range: range) else {
-            return nil
-        }
-        guard match.numberOfRanges >= 4,
-              let dashRange = Range(match.range(at: 1), in: line),
-              let wordRange = Range(match.range(at: 3), in: line) else {
+        guard let regex = try? Regex(pattern),
+              let match = line.firstMatch(of: regex) else { return nil }
+        guard match.output.count >= 4,
+              let dashRange = match.output[1].range,
+              let wordRange = match.output[3].range else {
             return nil
         }
         let stripTabs = !line[dashRange].isEmpty
