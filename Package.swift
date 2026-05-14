@@ -16,7 +16,7 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/OffskyLab/Orrery",
-            revision: "aa1c5ed228530ee5c6ae7492b44407680b19d845"
+            revision: "ae868e2630a860ad094670fb9be8c04a7038eb14"
         ),
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
     ],

@@ -265,8 +265,7 @@ public struct MagiOrchestrator {
         // Try to extract JSON from the output
         guard let jsonStart = output.range(of: "{\"decisions\""),
               let jsonData = output[jsonStart.lowerBound...].data(using: .utf8) else {
-            throw NSError(domain: "MagiOrchestrator", code: 1,
-                          userInfo: [NSLocalizedDescriptionKey: "No valid FinalVerdict JSON found"])
+            throw MagiOrchestratorError.noFinalVerdict
         }
 
         return try JSONDecoder().decode(FinalVerdict.self, from: jsonData)
@@ -460,4 +459,9 @@ public struct MagiOrchestrator {
         lines.append("*This report reflects model consensus, not verified facts.*")
         return lines.joined(separator: "\n")
     }
+}
+
+private enum MagiOrchestratorError: LocalizedError {
+    case noFinalVerdict
+    var errorDescription: String? { "No valid FinalVerdict JSON found" }
 }

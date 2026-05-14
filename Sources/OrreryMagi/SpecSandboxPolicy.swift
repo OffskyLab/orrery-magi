@@ -107,10 +107,7 @@ public struct SpecSandboxPolicy {
     ]
 
     private static func matches(pattern: String, in text: String) -> Bool {
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
-            return false
-        }
-        let range = NSRange(text.startIndex..<text.endIndex, in: text)
-        return regex.firstMatch(in: text, options: [], range: range) != nil
+        guard let regex = try? Regex(pattern) else { return false }
+        return text.firstMatch(of: regex) != nil
     }
 }

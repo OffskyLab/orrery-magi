@@ -180,7 +180,7 @@ public struct SpecImplementRunner {
                 try process.run()
                 lastLaunchError = nil
                 break
-            } catch let error as NSError {
+            } catch {
                 lastLaunchError = error
                 if attempt == 2 { break }
                 // DI2: only retry for transport-level errors that haven't
@@ -317,12 +317,13 @@ public struct SpecImplementRunner {
         }
     }
 
-    private static func isTransportLaunchErrno(_ error: NSError) -> Bool {
+    private static func isTransportLaunchErrno(_ error: any Error) -> Bool {
         // POSIX errno codes that indicate the subprocess never actually
         // started (vs semantic failures like non-zero exit).
         let transportErrnos: Set<Int32> = [EACCES, ENOENT, ETXTBSY, ENOEXEC, EISDIR]
-        let code = Int32(error.code)
-        if error.domain == NSPOSIXErrorDomain && transportErrnos.contains(code) {
+        let nsErr = error as NSError
+        let code = Int32(nsErr.code)
+        if nsErr.domain == POSIXError.errorDomain && transportErrnos.contains(code) {
             return true
         }
         // Foundation sometimes wraps launch errors with NSError.code == Int(errno).
