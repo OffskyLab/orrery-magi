@@ -9,7 +9,7 @@ import OrreryCore
 /// Output is always a single JSON object on stdout, even on validation
 /// failure (see `SpecRunResult.errorShell`). Exit code is governed by
 /// D12: verify is authoritative, review is advisory.
-public struct SpecRunCommand: ParsableCommand {
+public struct SpecRunCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "spec-run",
         abstract: L10n.SpecRun.abstract
@@ -59,7 +59,7 @@ public struct SpecRunCommand: ParsableCommand {
 
     public init() {}
 
-    public func run() throws {
+    public func run() async throws {
         // --- Validate mode ----------------------------------------------
         let validModes: Set<String> = ["plan", "implement", "verify", "run", "status"]
         guard validModes.contains(mode) else {
@@ -68,7 +68,7 @@ public struct SpecRunCommand: ParsableCommand {
         }
 
         switch mode {
-        case "verify":     try runVerify()
+        case "verify":     try await runVerify()
         case "implement":  try runImplement()
         case "status":     try runStatus()
         default:
@@ -79,7 +79,7 @@ public struct SpecRunCommand: ParsableCommand {
 
     // MARK: - Mode: verify
 
-    private func runVerify() throws {
+    private func runVerify() async throws {
         let store = EnvironmentStore.default
         let envName = environment ?? ProcessInfo.processInfo.environment["ORRERY_ACTIVE_ENV"]
 
@@ -90,7 +90,7 @@ public struct SpecRunCommand: ParsableCommand {
 
         let result: SpecRunResult
         do {
-            result = try SpecVerifyRunner.run(
+            result = try await SpecVerifyRunner.run(
                 specPath: specPath,
                 tool: resolvedTool,
                 environment: envName,

@@ -22,7 +22,7 @@ public struct SpecVerifyRunner {
         overallTimeout: TimeInterval,
         review: Bool,
         resumeSessionId: String?
-    ) throws -> SpecRunResult {
+    ) async throws -> SpecRunResult {
         let startedAt = ISO8601DateFormatter().string(from: Date())
         let resolvedPath = resolve(path: specPath)
 
@@ -50,7 +50,7 @@ public struct SpecVerifyRunner {
 
         let commandOutcomes: [CommandOutcome]
         if execute {
-            commandOutcomes = runCommands(
+            commandOutcomes = await runCommands(
                 commands: commands,
                 perCommandTimeout: perCommandTimeout,
                 overallTimeout: overallTimeout
@@ -76,7 +76,7 @@ public struct SpecVerifyRunner {
 
         let diffSummary = collectDiffStat()
 
-        let reviewOutcome: ReviewOutcome? = makeReviewOutcome(
+        let reviewOutcome: ReviewOutcome? = await makeReviewOutcome(
             requested: review,
             commandOutcomes: commandOutcomes,
             strictPolicy: strictPolicy,
@@ -138,7 +138,7 @@ public struct SpecVerifyRunner {
         commands: [SpecAcceptanceParser.Command],
         perCommandTimeout: TimeInterval,
         overallTimeout: TimeInterval
-    ) -> [CommandOutcome] {
+    ) async -> [CommandOutcome] {
         var results: [CommandOutcome] = []
         let overallStart = Date()
         var overallExceeded = false
@@ -184,7 +184,7 @@ public struct SpecVerifyRunner {
                     skippedReason: reason
                 ))
             case .allowed:
-                results.append(executeOne(
+                results.append(await executeOne(
                     command: command.line,
                     perCommandTimeout: perCommandTimeout
                 ))
@@ -196,7 +196,7 @@ public struct SpecVerifyRunner {
     private static func executeOne(
         command: String,
         perCommandTimeout: TimeInterval
-    ) -> CommandOutcome {
+    ) async -> CommandOutcome {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
         process.arguments = ["-c", command]
@@ -208,44 +208,41 @@ public struct SpecVerifyRunner {
         process.standardError = stderrPipe
         process.standardInput = FileHandle.nullDevice
 
-        // Drain pipes on background threads before process.run() so a large
-        // output stream cannot deadlock the child (pipe buffer ~64KB).
-        var stdoutData = Data()
-        var stdoutTruncated = false
-        var stderrData = Data()
-        var stderrTruncated = false
-        let readGroup = DispatchGroup()
-
-        readGroup.enter()
-        DispatchQueue.global().async {
-            (stdoutData, stdoutTruncated) = readCapped(
+        // Drain pipes concurrently so a large output stream cannot deadlock
+        // the child (pipe buffer ~64KB). Task.detached avoids mutable captures.
+        let stdoutReadTask = Task.detached {
+            readCapped(
                 handle: stdoutPipe.fileHandleForReading,
                 cap: SpecSandboxPolicy.stdoutByteCap
             )
-            readGroup.leave()
         }
-        readGroup.enter()
-        DispatchQueue.global().async {
-            (stderrData, stderrTruncated) = readCapped(
+        let stderrReadTask = Task.detached {
+            readCapped(
                 handle: stderrPipe.fileHandleForReading,
                 cap: SpecSandboxPolicy.stdoutByteCap
             )
-            readGroup.leave()
         }
 
-        let timeoutWork = DispatchWorkItem { [process] in
-            process.terminate()
+        let timeoutTask: Task<Void, Never>?
+        if perCommandTimeout > 0 {
+            let timeout = perCommandTimeout
+            timeoutTask = Task {
+                do {
+                    try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                    process.terminate()
+                } catch { /* cancelled */ }
+            }
+        } else {
+            timeoutTask = nil
         }
-        DispatchQueue.global().asyncAfter(
-            deadline: .now() + perCommandTimeout,
-            execute: timeoutWork
-        )
 
         let start = Date()
         do {
             try process.run()
         } catch {
-            timeoutWork.cancel()
+            timeoutTask?.cancel()
+            stdoutReadTask.cancel()
+            stderrReadTask.cancel()
             return CommandOutcome(
                 command: command,
                 status: .fail,
@@ -258,8 +255,10 @@ public struct SpecVerifyRunner {
         }
 
         process.waitUntilExit()
-        timeoutWork.cancel()
-        readGroup.wait()
+        timeoutTask?.cancel()
+
+        let (stdoutData, stdoutTruncated) = await stdoutReadTask.value
+        let (stderrData, stderrTruncated) = await stderrReadTask.value
 
         let duration = Date().timeIntervalSince(start)
         let timedOut = process.terminationReason == .uncaughtSignal
@@ -347,7 +346,7 @@ public struct SpecVerifyRunner {
         tool: Tool?,
         environment: String?,
         store: EnvironmentStore
-    ) -> ReviewOutcome? {
+    ) async -> ReviewOutcome? {
         guard requested else { return nil }
 
         let hasFail = commandOutcomes.contains { $0.status == .fail }
@@ -362,7 +361,7 @@ public struct SpecVerifyRunner {
             )
         }
 
-        return invokeMagiReview(
+        return await invokeMagiReview(
             specPath: specPath,
             environment: environment,
             store: store
@@ -373,7 +372,7 @@ public struct SpecVerifyRunner {
         specPath: String,
         environment: String?,
         store: EnvironmentStore
-    ) -> ReviewOutcome {
+    ) async -> ReviewOutcome {
         let topic = "Review spec at \(specPath): are the acceptance criteria "
             + "complete, realistic, and consistent with the stated 改動檔案 "
             + "and 介面合約 sections?"
@@ -388,7 +387,7 @@ public struct SpecVerifyRunner {
                 )
             }
 
-            let run = try MagiOrchestrator.run(
+            let run = try await MagiOrchestrator.run(
                 topic: topic,
                 subtopics: [topic],
                 tools: availableTools,

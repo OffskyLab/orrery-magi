@@ -1,6 +1,6 @@
 import ArgumentParser
 
-public struct OrreryMagiRoot: ParsableCommand {
+public struct OrreryMagiRoot: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "orrery-magi",
         version: OrreryMagiVersion.current,

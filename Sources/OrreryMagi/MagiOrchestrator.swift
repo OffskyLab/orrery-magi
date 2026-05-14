@@ -16,7 +16,7 @@ public struct MagiOrchestrator {
         noSummarize: Bool = false,
         roles: [String: MagiRole]? = nil,
         emitOutput: Bool = true
-    ) throws -> MagiRun {
+    ) async throws -> MagiRun {
         let log: (String) -> Void = emitOutput ? stderr : { _ in }
         let now = ISO8601DateFormatter().string(from: Date())
         var magiRun = MagiRun(
@@ -55,17 +55,13 @@ public struct MagiOrchestrator {
 
             let allPreviousRounds = previousRounds + magiRun.rounds
 
-            // Launch all tools in parallel
-            let group = DispatchGroup()
-            let resultQueue = DispatchQueue(label: "magi.results")
-            var runnerResults: [AgentExecutionResult] = []
-
-            for tool in tools {
-                group.enter()
-                DispatchQueue.global().async {
-                    defer { group.leave() }
-
-                    let resumeId = sessionMap[tool.rawValue]
+            // Launch all tools in parallel using structured concurrency.
+            let capturedSessionMap = sessionMap
+            let runnerResults: [AgentExecutionResult] = await withTaskGroup(
+                of: AgentExecutionResult.self
+            ) { group in
+                for tool in tools {
+                    let resumeId = capturedSessionMap[tool.rawValue]
                     let includeOwn = (resumeId == nil)
                     let role = roles?[tool.rawValue]
                     let prompt = MagiPromptBuilder.buildPrompt(
@@ -77,42 +73,34 @@ public struct MagiOrchestrator {
                         includeOwnHistory: includeOwn,
                         role: role)
 
-                    if let role {
-                        log(L10n.Magi.roleAssigned(tool.rawValue, role.label))
+                    group.addTask {
+                        // Post-M5a: Magi no longer owns the subprocess plumbing;
+                        // `ProcessAgentExecutor` is the single path through
+                        // `DelegateProcessBuilder` + session snapshot-diff.
+                        let executor = ProcessAgentExecutor(
+                            store: store, activeEnvironment: environment)
+                        let request = AgentExecutionRequest(
+                            tool: tool, prompt: prompt,
+                            resumeSessionId: resumeId,
+                            timeout: 120)
+                        do {
+                            return try await executor.execute(request: request)
+                        } catch {
+                            // Launch-level failure surfaces as an exception
+                            // from AgentExecutor; fall back to the same
+                            // "failed" shape the orchestrator expects.
+                            return AgentExecutionResult(
+                                tool: tool, rawOutput: "",
+                                stderrOutput: "Build failed: \(error)",
+                                exitCode: -1, timedOut: false, sessionId: nil,
+                                duration: 0)
+                        }
                     }
-                    log(L10n.Magi.toolStart(tool.rawValue))
-
-                    // Post-M5a: Magi no longer owns the subprocess plumbing;
-                    // `ProcessAgentExecutor` is the single path through
-                    // `DelegateProcessBuilder` + session snapshot-diff.
-                    let executor = ProcessAgentExecutor(
-                        store: store, activeEnvironment: environment)
-                    let request = AgentExecutionRequest(
-                        tool: tool, prompt: prompt,
-                        resumeSessionId: resumeId,
-                        timeout: 120)
-                    let result: AgentExecutionResult
-                    do {
-                        result = try executor.execute(request: request)
-                    } catch {
-                        // Launch-level failure surfaces as an exception
-                        // from AgentExecutor; fall back to the same
-                        // "failed" shape the orchestrator expects.
-                        result = AgentExecutionResult(
-                            tool: tool, rawOutput: "",
-                            stderrOutput: "Build failed: \(error)",
-                            exitCode: -1, timedOut: false, sessionId: nil,
-                            duration: 0)
-                    }
-
-                    if result.timedOut {
-                        log(L10n.Magi.timeoutWarning(tool.rawValue, 120))
-                    }
-
-                    resultQueue.sync { runnerResults.append(result) }
                 }
+                var results: [AgentExecutionResult] = []
+                for await result in group { results.append(result) }
+                return results
             }
-            group.wait()
 
             // Convert runner results to MagiAgentResponses
             var responses: [MagiAgentResponse] = []
@@ -159,7 +147,7 @@ public struct MagiOrchestrator {
         let verdict: FinalVerdict
         if !noSummarize {
             log(L10n.Magi.summarizing)
-            if let summarized = try? generateSummarizedVerdict(
+            if let summarized = try? await generateSummarizedVerdict(
                 run: magiRun, tools: tools, environment: environment, store: store) {
                 verdict = summarized
             } else {
@@ -206,7 +194,7 @@ public struct MagiOrchestrator {
 
     private static func generateSummarizedVerdict(
         run: MagiRun, tools: [Tool], environment: String?, store: EnvironmentStore
-    ) throws -> FinalVerdict {
+    ) async throws -> FinalVerdict {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let runJSON = String(data: try encoder.encode(run), encoding: .utf8) ?? ""
@@ -236,31 +224,19 @@ public struct MagiOrchestrator {
         let stderrPipe = Pipe()
         process.standardError = stderrPipe
 
-        // Read before wait to avoid deadlock
-        var stdoutData = Data()
-        let readQueue = DispatchQueue(label: "magi.summarize.read")
-        let readGroup = DispatchGroup()
-        readGroup.enter()
-        readQueue.async {
-            if let pipe = outputPipe {
-                stdoutData = pipe.fileHandleForReading.readDataToEndOfFile()
-            }
-            readGroup.leave()
+        // Drain stdout/stderr concurrently before wait to avoid deadlock.
+        let stdoutReadTask = Task.detached {
+            outputPipe.map { $0.fileHandleForReading.readDataToEndOfFile() } ?? Data()
         }
-        // Drain stderr to prevent blocking
-        let stderrReadGroup = DispatchGroup()
-        stderrReadGroup.enter()
-        DispatchQueue.global().async {
+        let stderrReadTask = Task.detached {
             _ = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-            stderrReadGroup.leave()
         }
 
         try process.run()
         process.waitUntilExit()
-        readGroup.wait()
-        stderrReadGroup.wait()
 
-        let output = String(data: stdoutData, encoding: .utf8) ?? ""
+        let output = String(data: await stdoutReadTask.value, encoding: .utf8) ?? ""
+        _ = await stderrReadTask.value
 
         // Try to extract JSON from the output
         guard let jsonStart = output.range(of: "{\"decisions\""),

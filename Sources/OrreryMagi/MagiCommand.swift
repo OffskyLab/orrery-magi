@@ -2,7 +2,7 @@ import ArgumentParser
 import Foundation
 import OrreryCore
 
-public struct MagiCommand: ParsableCommand {
+public struct MagiCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "magi",
         abstract: L10n.Magi.abstract,
@@ -66,7 +66,7 @@ public struct MagiCommand: ParsableCommand {
         }
     }
 
-    public func run() throws {
+    public func run() async throws {
         if capabilities {
             print(MagiCapabilities.json())
             return
@@ -144,7 +144,7 @@ public struct MagiCommand: ParsableCommand {
             roleAssignments = nil
         }
 
-        let magiRun = try MagiOrchestrator.run(
+        let magiRun = try await MagiOrchestrator.run(
             topic: topicStr,
             subtopics: subtopics,
             tools: tools,
