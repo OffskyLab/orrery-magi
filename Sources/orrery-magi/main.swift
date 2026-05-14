@@ -1,3 +1,0 @@
-import OrreryMagi
-
-OrreryMagiRoot.main()

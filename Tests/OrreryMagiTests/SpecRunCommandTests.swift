@@ -21,8 +21,8 @@ final class SpecRunCommandTests: XCTestCase {
         strictPolicy: Bool = false,
         review: Bool = false,
         resumeSessionId: String? = nil
-    ) throws -> SpecRunResult {
-        try OrreryMagi.SpecVerifyRunner.run(
+    ) async throws -> SpecRunResult {
+        try await OrreryMagi.SpecVerifyRunner.run(
             specPath: specPath,
             tool: nil,
             environment: nil,
@@ -38,7 +38,7 @@ final class SpecRunCommandTests: XCTestCase {
 
     // MARK: - dry-run default
 
-    func testDryRun_allCommandsSkipped() throws {
+    func testDryRun_allCommandsSkipped() async throws {
         let path = try writeFixture("""
         ## 驗收標準
 
@@ -50,7 +50,7 @@ final class SpecRunCommandTests: XCTestCase {
         echo ok
         ```
         """)
-        let result = try run(specPath: path)
+        let result = try await run(specPath: path)
         XCTAssertEqual(result.phase, "verify")
         XCTAssertNil(result.sessionId)
         XCTAssertEqual(result.verification.checklist.count, 2)
@@ -65,7 +65,7 @@ final class SpecRunCommandTests: XCTestCase {
 
     // MARK: - full JSON shape stability
 
-    func testJSONShapeContainsAllTopLevelKeys() throws {
+    func testJSONShapeContainsAllTopLevelKeys() async throws {
         let path = try writeFixture("""
         ## 驗收標準
 
@@ -75,7 +75,7 @@ final class SpecRunCommandTests: XCTestCase {
         swift build
         ```
         """)
-        let result = try run(specPath: path)
+        let result = try await run(specPath: path)
         let json = try result.toJSONString()
         let data = json.data(using: .utf8)!
         let parsed = try JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -104,24 +104,34 @@ final class SpecRunCommandTests: XCTestCase {
 
     // MARK: - missing acceptance section
 
-    func testMissingAcceptanceSection_throws() throws {
+    func testMissingAcceptanceSection_throws() async throws {
         let path = try writeFixture("""
         # Title
 
         No acceptance here.
         """)
-        XCTAssertThrowsError(try run(specPath: path))
+        do {
+            _ = try await run(specPath: path)
+            XCTFail("expected error: missing acceptance section")
+        } catch {
+            // expected
+        }
     }
 
     // MARK: - spec file not found
 
-    func testSpecNotFound_throws() {
-        XCTAssertThrowsError(try run(specPath: "/nonexistent/\(UUID().uuidString).md"))
+    func testSpecNotFound_throws() async {
+        do {
+            _ = try await run(specPath: "/nonexistent/\(UUID().uuidString).md")
+            XCTFail("expected error: spec file not found")
+        } catch {
+            // expected
+        }
     }
 
     // MARK: - resume session id is ignored (fresh session, noted in stderr)
 
-    func testResumeSessionId_ignoredAndNotedInStderr() throws {
+    func testResumeSessionId_ignoredAndNotedInStderr() async throws {
         let path = try writeFixture("""
         ## 驗收標準
 
@@ -131,7 +141,7 @@ final class SpecRunCommandTests: XCTestCase {
         swift build
         ```
         """)
-        let result = try run(specPath: path, resumeSessionId: "ignored-id-123")
+        let result = try await run(specPath: path, resumeSessionId: "ignored-id-123")
         XCTAssertNil(result.sessionId)
         XCTAssertTrue(result.stderr.contains("ignored-id-123"),
                       "stderr should mention the ignored id, got: \(result.stderr)")
@@ -139,7 +149,7 @@ final class SpecRunCommandTests: XCTestCase {
 
     // MARK: - policy_blocked does not cause fail; strict_policy makes it fail
 
-    func testPolicyBlocked_inExecuteMode_statusRecorded() throws {
+    func testPolicyBlocked_inExecuteMode_statusRecorded() async throws {
         let path = try writeFixture("""
         ## 驗收標準
 
@@ -147,7 +157,7 @@ final class SpecRunCommandTests: XCTestCase {
         git push origin main
         ```
         """)
-        let result = try run(specPath: path, execute: true)
+        let result = try await run(specPath: path, execute: true)
         XCTAssertEqual(result.verification.testResults.count, 1)
         XCTAssertEqual(result.verification.testResults[0].status, .policyBlocked)
         XCTAssertNotNil(result.verification.testResults[0].skippedReason)
@@ -156,17 +166,17 @@ final class SpecRunCommandTests: XCTestCase {
 
     // MARK: - review three-state
 
-    func testReviewNil_whenReviewFalse() throws {
+    func testReviewNil_whenReviewFalse() async throws {
         let path = try writeFixture("""
         ## 驗收標準
 
         - [ ] a
         """)
-        let result = try run(specPath: path, review: false)
+        let result = try await run(specPath: path, review: false)
         XCTAssertNil(result.review)
     }
 
-    func testReviewAdvisoryOnly_whenVerifyHasFail() throws {
+    func testReviewAdvisoryOnly_whenVerifyHasFail() async throws {
         let path = try writeFixture("""
         ## 驗收標準
 
@@ -175,7 +185,7 @@ final class SpecRunCommandTests: XCTestCase {
         ```
         """)
         // execute=true to actually run the command (so it fails)
-        let result = try run(specPath: path, execute: true, review: true)
+        let result = try await run(specPath: path, execute: true, review: true)
         XCTAssertNotNil(result.review)
         XCTAssertEqual(result.review?.verdict, .advisoryOnly)
         XCTAssertTrue(result.review?.reasoning.contains("verify did not fully pass") ?? false)
@@ -183,7 +193,7 @@ final class SpecRunCommandTests: XCTestCase {
 
     // MARK: - summary_markdown not empty
 
-    func testSummaryMarkdownIncludesCounts() throws {
+    func testSummaryMarkdownIncludesCounts() async throws {
         let path = try writeFixture("""
         ## 驗收標準
 
@@ -194,7 +204,7 @@ final class SpecRunCommandTests: XCTestCase {
         echo hi
         ```
         """)
-        let result = try run(specPath: path)
+        let result = try await run(specPath: path)
         XCTAssertTrue(result.summaryMarkdown.contains("Verify Summary"))
         XCTAssertTrue(result.summaryMarkdown.contains("Checklist items: 2"))
         XCTAssertTrue(result.summaryMarkdown.contains("Commands: 1"))
@@ -202,7 +212,7 @@ final class SpecRunCommandTests: XCTestCase {
 
     // MARK: - completed_steps reflects mode
 
-    func testCompletedSteps_dryRun() throws {
+    func testCompletedSteps_dryRun() async throws {
         let path = try writeFixture("""
         ## 驗收標準
 
@@ -210,13 +220,13 @@ final class SpecRunCommandTests: XCTestCase {
         swift build
         ```
         """)
-        let result = try run(specPath: path, execute: false)
+        let result = try await run(specPath: path, execute: false)
         XCTAssertEqual(result.completedSteps, ["parsed", "dry-run"])
     }
 
     // MARK: - JSON uses snake_case for multi-word fields
 
-    func testJSONUsesSnakeCase() throws {
+    func testJSONUsesSnakeCase() async throws {
         let path = try writeFixture("""
         ## 驗收標準
 
@@ -226,7 +236,7 @@ final class SpecRunCommandTests: XCTestCase {
         swift build
         ```
         """)
-        let result = try run(specPath: path)
+        let result = try await run(specPath: path)
         let json = try result.toJSONString()
         XCTAssertTrue(json.contains("\"session_id\""))
         XCTAssertTrue(json.contains("\"completed_steps\""))
