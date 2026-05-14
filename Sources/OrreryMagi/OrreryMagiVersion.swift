@@ -1,9 +1,9 @@
 /// Single source of truth for the orrery-magi binary version.
 /// Bumped per orrery-magi's own release cycle — NOT tied to orrery's
-/// version. v1.1.0 adds the Phase B spec-runtime surface after the
-/// initial standalone split.
+/// version. v1.1.1 fixes cross-platform Linux builds by replacing Darwin
+/// imports and NS-prefixed ObjC classes with Swift-native equivalents.
 public enum OrreryMagiVersion {
-    public static let current = "1.1.0"
+    public static let current = "1.1.1"
 
     /// Integer version of the shim <-> orrery-magi argv protocol.
     /// Bumped only when the shim's argv construction changes in a way

@@ -14,6 +14,6 @@ public enum OrreryMagiModule {
     /// Semantic version of the library API surface. Bumped on any
     /// breaking change to the public DTOs, orchestrator entry points,
     /// or `MagiCommand` / `MagiMCPTools` registration signatures.
-    /// 1.1.0 adds the spec runtime and multi-tool MCP schema surface.
-    public static let apiVersion = "1.1.0"
+    /// 1.1.1 fixes Linux cross-platform build (Darwin/NS-class cleanup).
+    public static let apiVersion = "1.1.1"
 }
