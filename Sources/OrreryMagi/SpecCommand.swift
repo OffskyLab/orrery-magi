@@ -2,7 +2,7 @@ import ArgumentParser
 import Foundation
 import OrreryCore
 
-public struct SpecCommand: ParsableCommand {
+public struct SpecCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "spec",
         abstract: L10n.Spec.abstract
@@ -28,12 +28,12 @@ public struct SpecCommand: ParsableCommand {
 
     public init() {}
 
-    public func run() throws {
+    public func run() async throws {
         let store = EnvironmentStore.default
         let envName = environment ?? ProcessInfo.processInfo.environment["ORRERY_ACTIVE_ENV"]
         let selectedTool: Tool? = tool.flatMap { Tool(rawValue: $0) }
 
-        let outputPath = try SpecGenerator.generate(
+        let outputPath = try await SpecGenerator.generate(
             inputPath: input,
             outputPath: output,
             profile: profile,

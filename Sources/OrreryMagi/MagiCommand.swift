@@ -162,7 +162,7 @@ public struct MagiCommand: AsyncParsableCommand {
                 .appendingPathComponent("magi-\(magiRun.runId).md")
             try report.write(to: tempFile, atomically: true, encoding: .utf8)
 
-            let specOutput = try SpecGenerator.generate(
+            let specOutput = try await SpecGenerator.generate(
                 inputPath: tempFile.path,
                 outputPath: nil,
                 profile: nil,

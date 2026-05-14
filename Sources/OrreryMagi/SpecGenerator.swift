@@ -12,7 +12,7 @@ public struct SpecGenerator {
         review: Bool,
         environment: String?,
         store: EnvironmentStore
-    ) throws -> String {
+    ) async throws -> String {
         let fm = FileManager.default
 
         // 1. Read input
@@ -39,7 +39,7 @@ public struct SpecGenerator {
         stderr(L10n.Spec.generating(writerTool.rawValue))
 
         // 6. Call writer
-        var specContent = try callTool(writerTool, prompt: prompt, environment: environment, store: store)
+        var specContent = try await callTool(writerTool, prompt: prompt, environment: environment, store: store)
 
         // 7. Optional review
         if review {
@@ -47,7 +47,7 @@ public struct SpecGenerator {
                 stderr(L10n.Spec.reviewing(reviewerTool.rawValue))
                 let reviewPrompt = SpecReviewPromptBuilder.buildReviewPrompt(
                     specContent: specContent, originalInput: inputContent, template: template)
-                let reviewOutput = try callTool(reviewerTool, prompt: reviewPrompt, environment: environment, store: store)
+                let reviewOutput = try await callTool(reviewerTool, prompt: reviewPrompt, environment: environment, store: store)
                 if !reviewOutput.contains("[LGTM]") {
                     specContent = reviewOutput
                 }
@@ -110,7 +110,7 @@ public struct SpecGenerator {
     private static func callTool(
         _ tool: Tool, prompt: String,
         environment: String?, store: EnvironmentStore
-    ) throws -> String {
+    ) async throws -> String {
         let builder = DelegateProcessBuilder(
             tool: tool, prompt: prompt,
             resumeSessionId: nil,
@@ -120,29 +120,18 @@ public struct SpecGenerator {
         let stderrPipe = Pipe()
         process.standardError = stderrPipe
 
-        // Read stdout and stderr on background threads to avoid deadlock
-        var stdoutData = Data()
-        let readGroup = DispatchGroup()
-
-        readGroup.enter()
-        DispatchQueue.global().async {
-            if let pipe = outputPipe {
-                stdoutData = pipe.fileHandleForReading.readDataToEndOfFile()
-            }
-            readGroup.leave()
+        let stdoutReadTask = Task.detached {
+            outputPipe.map { $0.fileHandleForReading.readDataToEndOfFile() } ?? Data()
         }
-
-        let stderrGroup = DispatchGroup()
-        stderrGroup.enter()
-        DispatchQueue.global().async {
+        let stderrReadTask = Task.detached {
             _ = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-            stderrGroup.leave()
         }
 
         try process.run()
         process.waitUntilExit()
-        readGroup.wait()
-        stderrGroup.wait()
+
+        let stdoutData = await stdoutReadTask.value
+        _ = await stderrReadTask.value
 
         return (String(data: stdoutData, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     }
