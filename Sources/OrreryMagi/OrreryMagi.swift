@@ -14,6 +14,7 @@ public enum OrreryMagiModule {
     /// Semantic version of the library API surface. Bumped on any
     /// breaking change to the public DTOs, orchestrator entry points,
     /// or `MagiCommand` / `MagiMCPTools` registration signatures.
-    /// 1.1.3 completes Swift 6 strict concurrency: SpecGenerator/SpecCommand async.
-    public static let apiVersion = "1.1.3"
+    /// 1.1.4 removes `OrreryMagiRoot` from the library surface (moved to
+    /// the executable target with `@main`) to fix the async entry point.
+    public static let apiVersion = "1.1.4"
 }
